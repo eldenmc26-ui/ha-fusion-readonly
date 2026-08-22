@@ -33,7 +33,8 @@
 			'solar:file-bold-duotone',
 			'gg:row-first',
 			'solar:posts-carousel-horizontal-bold-duotone',
-			'fluent:tab-add-24-filled'
+			'fluent:tab-add-24-filled',
+			'mdi:view-dashboard-plus'
 		]);
 	});
 
@@ -100,6 +101,12 @@
 			{/if}
 
 			{#if $isAdmin}
+				<div class="dashboard-add">
+					{#await import('$lib/Drawer/AddToDashboardButton.svelte') then AddToDashboardButton}
+						<AddToDashboardButton.default />
+					{/await}
+				</div>
+
 				<div class="settings push">
 					{#await import('$lib/Drawer/SettingsButton.svelte') then SettingsButton}
 						<SettingsButton.default {data} />
@@ -127,8 +134,9 @@
 	.search { grid-area: search; display: grid; max-width: 20rem; }
 	.settings { grid-area: settings; }
 	.hearth { grid-area: hearth; justify-self: end; }
+	.dashboard-add { grid-area: dashboard-add; }
 	.push { justify-self: end; margin-right: 3.7rem; }
-	.grid { display: grid; gap: 0.5rem; grid-template-areas: 'edit code div search hearth settings'; grid-template-columns: auto auto auto 1fr auto auto; width: 100%; }
+	.grid { display: grid; gap: 0.5rem; grid-template-areas: 'edit code div search hearth dashboard-add settings'; grid-template-columns: auto auto auto 1fr auto auto auto; width: 100%; }
 	.grid-editmode { display: grid; gap: 0.5rem; grid-template-areas: 'edit add appearance . history save'; grid-template-columns: auto auto auto 1fr auto auto; width: 100%; }
 	@media all and (max-width: 768px) {
 		#drawer { padding: 1rem 1.25rem; height: 8rem; flex-wrap: wrap; }
