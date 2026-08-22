@@ -4,6 +4,13 @@ import * as yaml from 'js-yaml';
 import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = async ({ request }) => {
+	// The client only exposes this endpoint after Home Assistant has
+	// confirmed that the current user is an administrator.
+	// This prevents accidental saves from the normal viewer UI.
+	if (request.headers.get('x-ha-fusion-admin') !== 'true') {
+		error(403, 'Administrator access required');
+	}
+
 	const body = await request.json();
 
 	let data;
