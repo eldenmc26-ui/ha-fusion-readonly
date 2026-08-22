@@ -1,36 +1,30 @@
 <script lang="ts">
-	import { dashboard, editMode, motion, lang, ripple, history, historyIndex } from '$lib/Stores';
+	import { dashboard, editMode, motion, lang, ripple, history, historyIndex, modals, isAdmin } from '$lib/Stores';
 	import { base } from '$app/paths';
-	import { modals } from '$lib/Modals';
 	import Ripple from '$lib/Actions/ripple';
 	import Icon from '@iconify/svelte';
 
 	let { modified }: { modified: boolean } = $props();
 
-	/**
-	 * Save keyboard shortcut when pressing cmd/ctrl + s
-	 */
 	function handleKeydown(event: KeyboardEvent) {
 		if ((event.metaKey || event.ctrlKey) && event.key === 's') {
-			if ($modals.length === 0 && $editMode && modified) {
-				// don't open browser save dialog
+			if ($modals.length === 0 && $editMode && $isAdmin && modified) {
 				event.preventDefault();
 				handleClick();
 			}
 		}
 	}
 
-	/**
-	 * Saves `$dashboard` to /data/dashboard.yaml
-	 * and updates `dashboard` and `initial` stores
-	 */
 	async function handleClick() {
-		if (!modified) return;
+		if (!$isAdmin || !modified) return;
 
 		try {
 			const response = await fetch(`${base}/_api/save_dashboard`, {
 				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
+				headers: {
+					'Content-Type': 'application/json',
+					'X-HA-Fusion-Admin': 'true'
+				},
 				body: JSON.stringify($dashboard)
 			});
 
@@ -38,11 +32,8 @@
 
 			if (response.ok && data.message === 'saved') {
 				$dashboard = JSON.parse($history[$historyIndex]);
-
-				// reset initial history entry
 				$history[0] = $history[$historyIndex];
 
-				// if $history has only 2 entries remove duplicate
 				if ($history.length === 2 && $history[0] === $history[1]) {
 					$history.pop();
 					$historyIndex = 0;
