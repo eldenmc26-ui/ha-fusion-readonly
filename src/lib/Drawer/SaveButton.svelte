@@ -1,6 +1,7 @@
 <script lang="ts">
-	import { dashboard, editMode, motion, lang, ripple, history, historyIndex, modals, isAdmin } from '$lib/Stores';
+	import { dashboard, editMode, motion, lang, ripple, history, historyIndex, isAdmin } from '$lib/Stores';
 	import { base } from '$app/paths';
+	import { modals } from '$lib/Modals';
 	import Ripple from '$lib/Actions/ripple';
 	import Icon from '@iconify/svelte';
 
