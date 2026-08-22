@@ -23,6 +23,8 @@ export const config = writable<HassConfig>();
 export const states = writable<HassEntities>();
 export const services = writable<HassServices>();
 export const connected = writable<boolean>();
+// current Home Assistant user
+export const isAdmin = writable<boolean>(false);
 
 // user
 export const configuration = writable<Configuration>();
