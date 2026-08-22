@@ -20,7 +20,8 @@ import {
 	services,
 	connected,
 	event,
-	persistentNotifications
+	persistentNotifications,
+	isAdmin
 } from '$lib/Stores';
 import { openModal, closeModal } from '$lib/Modals';
 import type { Configuration, PersistentNotification } from '$lib/Types';
@@ -30,14 +31,11 @@ const options = {
 	async loadTokens() {
 		try {
 			const raw = localStorage.hassTokens;
-			// guard against a missing key or the literal "null"/"undefined" string
 			if (!raw || raw === 'null' || raw === 'undefined') return undefined;
 			const tokens = JSON.parse(raw);
-			// treat a value that isn't actually a token object as no tokens
 			if (!tokens?.access_token && !tokens?.refresh_token) return undefined;
 			return tokens;
 		} catch {
-			// corrupt json in localStorage, treat as no tokens
 			return undefined;
 		}
 	},
@@ -67,29 +65,16 @@ export async function authentication(configuration: Configuration) {
 	let auth: Auth | undefined;
 
 	try {
-		// long lived access token
 		if (configuration?.token) {
 			auth = createLongLivedTokenAuth(configuration?.hassUrl, configuration?.token);
-
-			// companion app and ingress causes issues with auth redirect
-			// open special modal to enter long lived access token
 		} else if (navigator.userAgent.includes('Home Assistant')) {
 			if (!tokenPromptOpen) {
 				tokenPromptOpen = true;
 				openModal(() => import('$lib/Components/TokenModal.svelte'));
 			}
 			connected.set(false);
-			// This is not a successful authentication: callers must retain their
-			// retry loop until the modal supplies a long-lived token.
 			throw new Error('A long-lived access token is required in the companion app');
-
-			// default auth flow
 		} else {
-			// ingress serves the app from a per-installation path; pass an
-			// explicit redirect that keeps that path (origin alone would land
-			// the callback on the HA frontend, not this app) and strips the
-			// query string so callback state matching stays clean - the lib
-			// appends its own auth_callback flag
 			const isIngress = window.location.pathname.includes('/api/hassio_ingress/');
 			const redirectUrl = isIngress
 				? `${window.location.origin}${window.location.pathname}`
@@ -103,25 +88,24 @@ export async function authentication(configuration: Configuration) {
 			if (auth.expired) await auth.refreshAccessToken();
 		}
 
-		// connection
 		const conn = await createConnection({ auth });
 		tokenPromptOpen = false;
 		connection.set(conn);
-
-		// the lib fires "ready" inside the Connection constructor, before any
-		// listener can be attached, so the initial connect must be set manually
 		connected.set(true);
 
-		// states
+		// Determine whether the current Home Assistant user is an administrator.
+		try {
+			const user = await conn.sendMessagePromise({ type: 'auth/current_user' });
+			isAdmin.set(user?.is_admin === true);
+	} catch (error) {
+			console.error('Unable to determine Home Assistant admin status', error);
+			isAdmin.set(false);
+		}
+
 		subscribeEntities(conn, (hassEntities) => states.set(hassEntities));
-
-		// config
 		subscribeConfig(conn, (hassConfig) => config.set(hassConfig));
-
-		// services
 		subscribeServices(conn, (hassServices) => services.set(hassServices));
 
-		// events
 		conn.addEventListener('ready', () => {
 			console.debug('connected.');
 			connected.set(true);
@@ -130,32 +114,27 @@ export async function authentication(configuration: Configuration) {
 		conn.addEventListener('disconnected', () => {
 			console.debug('connecting...');
 			connected.set(false);
+			isAdmin.set(false);
 		});
 
 		conn.addEventListener('reconnect-error', () => {
 			console.error('ERR_INVALID_AUTH.');
 			connected.set(false);
+			isAdmin.set(false);
 		});
 
-		// clear auth query string
 		if (location.search.includes('auth_callback=1')) {
 			history.replaceState(null, '', location.pathname);
 		}
 
-		// custom events
 		trackSubscription(
 			conn.subscribeMessage(
 				(message: any) => {
 					const trigger = message?.variables?.trigger?.event?.data?.event;
-
-					// close_popup
 					if (trigger === 'close_popup') {
 						event.set('close_popup');
 						closeModal();
-					}
-
-					// refresh
-					else if (trigger === 'refresh') {
+					} else if (trigger === 'refresh') {
 						sessionStorage.setItem('event', 'refresh');
 						location.reload();
 					}
@@ -171,25 +150,19 @@ export async function authentication(configuration: Configuration) {
 			'HA_FUSION events'
 		);
 
-		// notifications
 		trackSubscription(
 			conn.subscribeMessage(
 				(data: {
 					type: 'added' | 'removed' | 'current' | 'updated';
 					notifications: Record<string, PersistentNotification>;
 				}) => {
-					// initial
 					if (data?.type === 'current') {
 						persistentNotifications.set(data?.notifications);
-
-						// update
 					} else if (data?.type === 'added' || data?.type === 'updated') {
 						persistentNotifications.update((notifications) => ({
 							...notifications,
 							...data?.notifications
 						}));
-
-						// remove
 					} else if (data?.type === 'removed') {
 						persistentNotifications.update((notifications) => {
 							Object.keys(data?.notifications).forEach((notificationId) => {
@@ -210,7 +183,6 @@ export async function authentication(configuration: Configuration) {
 	}
 }
 
-// error string instead of code
 function handleError(_error: unknown) {
 	switch (_error) {
 		case ERR_INVALID_AUTH:
@@ -218,9 +190,6 @@ function handleError(_error: unknown) {
 			options.clearTokens();
 			break;
 		case ERR_INVALID_AUTH_CALLBACK:
-			// raised by getAuth() when the auth callback state (client id /
-			// hass url) doesn't match, clear the stale tokens and query
-			// string so the next retry restarts the auth flow cleanly
 			console.error('ERR_INVALID_AUTH_CALLBACK');
 			options.clearTokens();
 			if (location.search.includes('auth_callback=1')) {
